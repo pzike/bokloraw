@@ -1,0 +1,47 @@
+Flutter Wireless Debugging Guide: Run and Live-Update the App on an Android Phone
+
+
+Connect device As live application update
+
+Connect to the hotspot of mobile phone
+Activate developer option in mobile phone
+Enable wireless debugging
+tap wireless debugging
+then
+tap "Pair device with pairing Code"
+
+
+Open Windows Powershell
+Type this command:
+
+adb pair [IP&Port in the mobile phone]
+HIT ENTER
+
+Then enter the pairing code
+HIT ENTER
+
+tap cancel in mobile phone
+//Note after pairing complete you skip that part the next time you update the app again just type this command:
+adb connect [IP&Port in the mobile phone]
+HIT ENTER
+
+To check if device is connected type this command:
+adb devices
+
+if device has been found open visual studio
+then open terminal Ctrl + ~ type this:
+
+//Check if phone detects by flutter
+flutter devices
+
+//Note first setup of 'flutter run' need Internet then after that you can use it in offline it takes about 20 minutes for first setup
+
+flutter run
+
+after the application created on the phone you can update the mobile application using this commands:
+//for fast update type
+r
+//for complete update type simply stands for restart
+R
+
+if you want to create new file in in flutter just press Ctrl+Shift+P then type Flutter:New Application

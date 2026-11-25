@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drainage Monitor</title>
+<style>
+:root {
+  /* ==== THEME TOKENS: the only place colors are defined. Edit here. ==== */
+  --header:#0A2A63; --on-header:#FFFFFF;
+  --primary:#0B6BC9; --on-primary:#FFFFFF;
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface-alt:#E8ECF3; --outline:#D9DEE8;
+  --text:#14213D; --text-2:#5B6783;
+  --normal:#1E8E5A; --on-normal:#FFFFFF;
+  --stage1:#D4A800; --on-stage1:#1B1B1B;
+  --stage2:#E8741A; --on-stage2:#1B1B1B;
+  --stage3:#D93636; --on-stage3:#FFFFFF;
+  --stale:#6B7280;  --on-stale:#FFFFFF;
+  --info:#0B6BC9;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --header:#0F1C3A; --on-header:#E6ECF8;
+    --primary:#4DA8FF; --on-primary:#04203F;
+    --bg:#0B1220; --surface:#121B2E; --surface-alt:#1B2744; --outline:#2A3957;
+    --text:#E6ECF8; --text-2:#9AA8C4;
+    --normal:#3DBB84; --on-normal:#0B1220;
+    --stage1:#F0C419; --on-stage1:#1B1B1B;
+    --stage2:#FF9A3D; --on-stage2:#1B1B1B;
+    --stage3:#FF6B6B; --on-stage3:#1B1B1B;
+    --stale:#9AA3B2;  --on-stale:#0B1220;
+    --info:#4DA8FF;
+  }
+}
+* { box-sizing:border-box; }
+html { height:100%; }
+body { margin:0; min-height:100%; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; line-height:1.4; display:flex; flex-direction:column; }
+button { font:inherit; color:inherit; cursor:pointer; }
+button:focus-visible, select:focus-visible, .row:focus-visible, .shot:focus-visible { outline:3px solid var(--primary); outline-offset:2px; }
+
+.top { background:var(--header); color:var(--on-header); padding:8px 14px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.top h1 { margin:0; font-size:17px; font-weight:600; display:inline; }
+.top .loc { font-size:13px; opacity:.85; margin-left:8px; }
+.top-r { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.ghost { background:transparent; color:var(--on-header); border:1px solid currentColor; border-radius:8px; padding:4px 10px; font-size:13px; }
+.top select { font:inherit; font-size:13px; padding:3px 6px; border-radius:6px; }
+.top label { font-size:13px; }
+.tag { font-size:11px; padding:1px 8px; border-radius:6px; background:color-mix(in srgb, var(--stage1) 30%, transparent); border:1px solid var(--stage1); color:inherit; }
+.top .tag { color:var(--on-header); }
+
+main { flex:1; min-height:0; width:100%; max-width:1440px; margin:0 auto; padding:10px 12px; display:flex; flex-direction:column; gap:8px; }
+.notice { border:1px solid var(--stage2); background:color-mix(in srgb, var(--stage2) 18%, transparent); border-radius:10px; padding:8px 12px; font-size:14px; }
+
+.dash { display:grid; gap:10px; grid-template-columns:repeat(2,minmax(0,1fr)); }
+.col { display:contents; }
+.card { background:var(--surface); border:1px solid var(--outline); border-radius:12px; padding:12px; display:flex; flex-direction:column; min-width:0; min-height:0; }
+.card h3 { margin:0 0 8px; font-size:13px; font-weight:600; color:var(--text-2); text-transform:none; }
+#cStatus { order:1; } #cResponse { order:2; } #cTrend { order:3; grid-column:1/-1; } #cEvidence { order:4; } #cReadings { order:5; } #cIncidents { order:6; grid-column:1/-1; }
+@media (max-width:700px) { .dash { grid-template-columns:minmax(0,1fr); } }
+
+.small { font-size:13px; color:var(--text-2); margin:0; }
+.sev { display:flex; flex-direction:column; gap:10px; flex:1; min-height:0; }
+.sevbody { display:flex; gap:10px; flex:1; min-height:0; }
+.sevtxt { flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; }
+.sevbadge { border-radius:10px; padding:10px 12px; background:var(--sc); color:var(--on-sc); }
+.sevbadge[data-s="0"] { --sc:var(--normal); --on-sc:var(--on-normal); }
+.sevbadge[data-s="1"] { --sc:var(--stage1); --on-sc:var(--on-stage1); }
+.sevbadge[data-s="2"] { --sc:var(--stage2); --on-sc:var(--on-stage2); }
+.sevbadge[data-s="3"] { --sc:var(--stage3); --on-sc:var(--on-stage3); }
+.sevbadge[data-s="x"] { --sc:var(--stale); --on-sc:var(--on-stale); }
+.sevbadge b { display:block; font-size:24px; line-height:1.15; }
+.sevbadge span { font-size:13px; }
+.kv { font-size:14px; margin:0; }
+.kv b { font-weight:600; }
+.meterbox { flex:0 0 130px; position:relative; min-height:190px; }
+.meterbox svg { position:absolute; inset:0; }
+
+.reads { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 12px; }
+.reads div span { display:block; font-size:12px; color:var(--text-2); }
+.reads div b { font-size:16px; font-weight:600; }
+
+.thead { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+.thead h3 { margin:0; }
+.rg { display:flex; gap:4px; }
+.rg button { background:transparent; border:1px solid var(--outline); border-radius:6px; padding:2px 10px; font-size:13px; color:var(--text); }
+.rg button[aria-pressed="true"] { background:var(--primary); border-color:var(--primary); color:var(--on-primary); }
+#chartBox { position:relative; flex:1; min-height:230px; }
+#chartBox svg { position:absolute; inset:0; }
+
+.steps { display:flex; align-items:flex-start; margin:4px 0 6px; }
+.step { flex:1; display:flex; flex-direction:column; align-items:center; text-align:center; gap:3px; font-size:12px; color:var(--text-2); min-width:0; }
+.step .dot { width:18px; height:18px; border-radius:50%; border:2px solid var(--outline); background:var(--surface); }
+.step.done .dot { background:var(--normal); border-color:var(--normal); }
+.step.now .dot { border-color:var(--primary); box-shadow:0 0 0 4px color-mix(in srgb, var(--primary) 25%, transparent); }
+.step b { color:var(--text); font-weight:600; font-size:13px; }
+.step.now b { color:var(--text); }
+.step span { font-size:12px; }
+.line { flex:0 0 auto; width:0; }
+.rail { display:flex; align-items:center; margin:0; }
+
+.shots { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.shot { border:0; padding:0; background:transparent; text-align:left; display:flex; flex-direction:column; min-height:0; min-width:0; }
+.frame { aspect-ratio:4/3; border-radius:8px; border:1px solid var(--outline); background:var(--surface-alt); overflow:hidden; display:flex; align-items:center; justify-content:center; text-align:center; font-size:12px; color:var(--text-2); padding:6px; width:100%; }
+.frame img { width:100%; height:100%; object-fit:contain; display:block; }
+.frame.sample { border-style:dashed; }
+.cap { font-size:12px; color:var(--text-2); margin:3px 0 0; }
+.cap b { color:var(--text); }
+
+.list { overflow:auto; display:flex; flex-direction:column; min-height:0; }
+.row { display:grid; grid-template-columns:auto auto 1fr auto; align-items:center; gap:8px; width:100%; text-align:left; background:transparent; border:0; border-bottom:1px solid var(--outline); padding:7px 4px; font-size:13px; }
+.row[aria-current="true"] { background:color-mix(in srgb, var(--primary) 12%, transparent); }
+.badge { display:inline-block; padding:1px 8px; border-radius:999px; font-size:11px; font-weight:600; background:color-mix(in srgb, var(--b) 22%, transparent); border:1px solid var(--b); white-space:nowrap; }
+.badge.reported { --b:var(--stage2); } .badge.responding { --b:var(--info); } .badge.cleaned { --b:var(--stage1); } .badge.resolved { --b:var(--normal); }
+.more { margin-top:6px; background:transparent; border:1px solid var(--outline); border-radius:8px; padding:4px 10px; font-size:13px; align-self:flex-start; }
+
+footer { border-top:1px solid var(--outline); padding:6px 14px; font-size:12px; color:var(--text-2); display:flex; gap:6px 16px; flex-wrap:wrap; }
+dialog { border:1px solid var(--outline); border-radius:12px; padding:12px; background:var(--surface); color:var(--text); max-width:min(92vw,900px); }
+dialog::backdrop { background:rgba(0,0,0,.6); }
+dialog img { max-width:100%; max-height:70vh; display:block; margin:0 auto; border-radius:8px; }
+dialog .frame { min-height:260px; aspect-ratio:4/3; flex:none; }
+dialog .dh { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px; }
+dialog .dh button { background:transparent; border:1px solid var(--outline); border-radius:8px; padding:4px 12px; }
+[hidden] { display:none !important; }
+
+/* One-screen layout for laptops and desktops */
+@media (min-width:1100px) and (min-height:620px) {
+  body { height:100vh; height:100dvh; overflow:hidden; }
+  .dash { flex:1; min-height:0; grid-template-columns:minmax(250px,1fr) minmax(0,2fr) minmax(290px,1.3fr); }
+  .col { display:flex; flex-direction:column; gap:10px; min-height:0; min-width:0; }
+  #cTrend, #cIncidents { grid-column:auto; }
+  #cStatus, #cResponse, #cTrend, #cEvidence, #cReadings, #cIncidents { order:0; }
+  #cStatus, #cTrend, #cEvidence { flex:1; }
+  .shots { flex:1; min-height:0; }
+  .shot .frame { aspect-ratio:auto; flex:1; min-height:100px; }
+  #cIncidents { flex:0 0 190px; }
+  #chartBox { min-height:120px; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div><h1 id="siteName"></h1><span class="loc" id="siteLoc"></span></div>
+  <div class="top-r">
+    <span id="sampleTag" class="tag" data-i18n="tag.sample" hidden></span>
+    <label id="scLabel" hidden><span data-i18n="demo.scenario"></span> <select id="scenario"></select></label>
+    <button id="langBtn" class="ghost" type="button"></button>
+  </div>
+</header>
+
+<main>
+  <div id="errBanner" class="notice" role="alert" hidden></div>
+  <div class="dash">
+    <div class="col">
+      <section id="cStatus" class="card" aria-live="polite">
+        <h3 data-i18n="status.title"></h3>
+        <div class="sev">
+          <div id="sevBadge" class="sevbadge" data-s="0"><b id="sevName"></b><span id="sevDesc"></span></div>
+          <div class="sevbody">
+            <div class="sevtxt">
+              <p class="kv" id="clogLine"></p>
+              <p class="small" id="rainLine"></p>
+              <p class="kv" id="trendLine" style="margin-top:6px"></p>
+              <p class="small" id="threshNote" hidden></p>
+            </div>
+            <div class="meterbox" id="meterBox"></div>
+          </div>
+        </div>
+      </section>
+      <section id="cReadings" class="card">
+        <h3 data-i18n="read.title"></h3>
+        <div class="reads">
+          <div><span data-i18n="read.level"></span><b id="rdLevel">-</b></div>
+          <div><span data-i18n="read.rain"></span><b id="rdRain">-</b></div>
+          <div><span data-i18n="read.signal"></span><b id="rdSignal">-</b></div>
+          <div><span data-i18n="read.power"></span><b id="rdPower">-</b></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section id="cTrend" class="card">
+        <div class="thead"><h3 data-i18n="trend.title"></h3><div class="rg" id="rg" role="group" aria-label="Time range"></div></div>
+        <div id="chartBox"></div>
+      </section>
+      <section id="cResponse" class="card">
+        <h3 id="respTitle"></h3>
+        <div id="respBody"></div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section id="cEvidence" class="card">
+        <h3 data-i18n="ev.title"></h3>
+        <p class="small" id="evSub" style="margin-bottom:8px"></p>
+        <div class="shots" id="shots"></div>
+        <p class="small" id="evState" style="margin-top:8px"></p>
+        <p class="small" style="margin-top:auto;padding-top:8px" data-i18n="ev.hint"></p>
+      </section>
+      <section id="cIncidents" class="card">
+        <h3 data-i18n="inc.title"></h3>
+        <div class="list" id="list"></div>
+        <p id="empty" class="small" hidden></p>
+        <button id="moreBtn" class="more" type="button" hidden></button>
+      </section>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <span id="privacy" data-i18n="footer.privacy"></span>
+  <span id="contact"></span>
+  <span id="refreshNote"></span>
+</footer>
+
+<dialog id="dlg" aria-labelledby="dlgTitle">
+  <div class="dh"><strong id="dlgTitle"></strong><button id="dlgClose" type="button"></button></div>
+  <div id="dlgBody"></div>
+  <p class="cap" id="dlgCap"></p>
+</dialog>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ==== CONFIG: edit these to point the site at your project ==== */
+  const CONFIG = {
+    siteName: 'Drainage Monitor',
+    location: 'Barangay Maybunga, Pasig City',
+    mode: 'demo',                 // 'demo' (sample data) or 'supabase' (real data)
+    supabaseUrl: '',              // e.g. https://xxxx.supabase.co
+    supabaseAnonKey: '',          // the PUBLIC anon key only, never the service key
+    refreshSeconds: 30,
+    rowsPerPage: 8,
+    timeZone: 'Asia/Manila',
+    contact: {
+      en: 'For emergencies, contact your barangay hall.',
+      fil: 'Para sa emergency, makipag-ugnayan sa inyong barangay hall.'
+    }
+  };
+
+  const I18N = {
+    en: {
+      'lang.switch': 'Filipino',
+      'tag.sample': 'Sample data',
+      'demo.scenario': 'Sample scenario:',
+      'sc.normal': 'All normal', 'sc.stage1': 'Stage 1', 'sc.stage2': 'Stage 2', 'sc.stage3': 'Stage 3', 'sc.stale': 'No recent data',
+      'status.title': 'Drainage status',
+      'sev.0': 'Normal', 'sev.1': 'Stage 1', 'sev.2': 'Stage 2', 'sev.3': 'Stage 3', 'sev.x': 'No recent data',
+      'sevd.0': 'Water is below Stage 1.',
+      'sevd.1': 'Water is rising in the drain.',
+      'sevd.2': 'Water in the drain is high.',
+      'sevd.3': 'Water is at the curb. Avoid flooded areas.',
+      'sevd.x': 'Last reading {ago}. This is not an all-clear.',
+      'sevd.none': 'No reading received yet. This is not an all-clear.',
+      'clog.none': 'No clog suspected', 'clog.suspected': 'Suspected clog', 'clog.unknown': 'Clog status unknown',
+      'rain.dry': 'No rain detected', 'rain.light': 'Light rain', 'rain.heavy': 'Heavy rain',
+      'trend.rising': 'Rising', 'trend.steady': 'Steady', 'trend.falling': 'Falling', 'trend.label': 'Water is',
+      'thresh.none': 'Stage thresholds are not configured.',
+      'meter.curb': 'Curb top', 'meter.stage': 'Stage {n}', 'meter.last': 'Last known',
+      'read.title': 'Latest readings',
+      'read.level': 'Water level', 'read.rain': 'Rain', 'read.signal': 'Last signal', 'read.power': 'Node battery',
+      'trend.title': 'Water level trend',
+      'trend.nodata': 'No readings for this period.',
+      'range.1h': '1 h', 'range.6h': '6 h', 'range.24h': '24 h', 'range.7d': '7 d',
+      'resp.title': 'Response to the incident on {date}',
+      'resp.none': 'No incidents recorded yet.',
+      'resp.s1': 'Reported', 'resp.s2': 'Response started', 'resp.s3': 'Cleaning done', 'resp.s4': 'Verified by sensor',
+      'resp.pending': 'Pending',
+      'resp.after': '{n} min after report',
+      'resp.verified': 'Verified: the water level returned below Stage 1.',
+      'resp.note': 'Action taken: {note}',
+      'ev.title': 'Evidence of action',
+      'ev.sub': 'Incident {date} · {node}',
+      'ev.before': 'Before', 'ev.after': 'After',
+      'ev.none': 'No approved photo for this incident.',
+      'ev.pending': 'The after photo will appear once cleaning is done.',
+      'ev.sample': 'Sample placeholder. Not a real photo.',
+      'ev.hint': 'Click a photo to enlarge. Photos are shown only after staff approval.',
+      'ev.noinc': 'Evidence appears here after an incident is handled.',
+      'ev.stateVerified': 'Cleaned and verified by the sensor.',
+      'ev.stateCleaned': 'Cleaning reported. Waiting for the sensor to confirm.',
+      'ev.stateResp': 'Responders are handling this incident.',
+      'ev.stateRep': 'Reported. Waiting for a response.',
+      'inc.title': 'Recent incidents',
+      'inc.empty': 'No incidents recorded yet.',
+      'inc.more': 'Show more',
+      'st.reported': 'Reported', 'st.responding': 'Responding', 'st.cleaned': 'Cleaned', 'st.resolved': 'Resolved',
+      'stage': 'Stage {n}',
+      'dlg.close': 'Close',
+      'footer.privacy': 'Public view: no personal information about responders is shown.',
+      'footer.refresh': 'Refreshes every {n} s.',
+      'err': 'Can’t reach the server. Showing the last data received.',
+      'err.first': 'Can’t reach the server right now. Please try again later.',
+      'ago.now': 'just now', 'ago.min': '{n} min ago', 'ago.hour': '{n} h ago', 'ago.day': '{n} d ago',
+      'min': '{n} min', 'none': '-', 'node': 'Node'
+    },
+    fil: {
+      'lang.switch': 'English',
+      'tag.sample': 'Sample na datos',
+      'demo.scenario': 'Sample na senaryo:',
+      'sc.normal': 'Normal', 'sc.stage1': 'Stage 1', 'sc.stage2': 'Stage 2', 'sc.stage3': 'Stage 3', 'sc.stale': 'Walang bagong datos',
+      'status.title': 'Kalagayan ng kanal',
+      'sev.0': 'Normal', 'sev.1': 'Stage 1', 'sev.2': 'Stage 2', 'sev.3': 'Stage 3', 'sev.x': 'Walang bagong datos',
+      'sevd.0': 'Mababa sa Stage 1 ang tubig.',
+      'sevd.1': 'Tumataas ang tubig sa kanal.',
+      'sevd.2': 'Mataas ang tubig sa kanal.',
+      'sevd.3': 'Abot na sa gilid ng kalsada ang tubig. Iwasan ang binabahang lugar.',
+      'sevd.x': 'Huling datos: {ago}. Hindi ito nangangahulugang ligtas na.',
+      'sevd.none': 'Wala pang natatanggap na datos. Hindi ito nangangahulugang ligtas na.',
+      'clog.none': 'Walang hinihinalang bara', 'clog.suspected': 'Hinihinalang may bara', 'clog.unknown': 'Hindi alam ang kalagayan ng bara',
+      'rain.dry': 'Walang ulan', 'rain.light': 'Mahinang ulan', 'rain.heavy': 'Malakas na ulan',
+      'trend.rising': 'Tumataas', 'trend.steady': 'Matatag', 'trend.falling': 'Bumababa', 'trend.label': 'Ang tubig ay',
+      'thresh.none': 'Hindi pa naka-set ang mga threshold ng stage.',
+      'meter.curb': 'Taas ng gilid', 'meter.stage': 'Stage {n}', 'meter.last': 'Huling alam',
+      'read.title': 'Mga pinakabagong sukat',
+      'read.level': 'Antas ng tubig', 'read.rain': 'Ulan', 'read.signal': 'Huling signal', 'read.power': 'Baterya ng node',
+      'trend.title': 'Takbo ng antas ng tubig',
+      'trend.nodata': 'Walang sukat para sa panahong ito.',
+      'range.1h': '1 oras', 'range.6h': '6 oras', 'range.24h': '24 oras', 'range.7d': '7 araw',
+      'resp.title': 'Pagtugon sa insidente noong {date}',
+      'resp.none': 'Wala pang naitalang insidente.',
+      'resp.s1': 'Iniulat', 'resp.s2': 'Nagsimulang tumugon', 'resp.s3': 'Tapos ang paglilinis', 'resp.s4': 'Kumpirmado ng sensor',
+      'resp.pending': 'Hinihintay',
+      'resp.after': '{n} min matapos iulat',
+      'resp.verified': 'Kumpirmado: bumalik sa ibaba ng Stage 1 ang antas ng tubig.',
+      'resp.note': 'Ginawang aksyon: {note}',
+      'ev.title': 'Patunay ng aksyon',
+      'ev.sub': 'Insidente {date} · {node}',
+      'ev.before': 'Bago', 'ev.after': 'Pagkatapos',
+      'ev.none': 'Walang aprubadong larawan para sa insidenteng ito.',
+      'ev.pending': 'Lalabas ang larawan pagkatapos ng paglilinis kapag natapos na ito.',
+      'ev.sample': 'Sample na placeholder. Hindi totoong larawan.',
+      'ev.hint': 'I-click ang larawan para palakihin. Ipinapakita lamang ang mga larawan kapag aprubado ng kawani.',
+      'ev.noinc': 'Lalabas dito ang patunay kapag may naasikasong insidente.',
+      'ev.stateVerified': 'Nalinis at kumpirmado ng sensor.',
+      'ev.stateCleaned': 'Naiulat ang paglilinis. Hinihintay ang kumpirmasyon ng sensor.',
+      'ev.stateResp': 'Inaasikaso ng mga tumutugon ang insidenteng ito.',
+      'ev.stateRep': 'Naiulat na. Hinihintay ang pagtugon.',
+      'inc.title': 'Mga kamakailang insidente',
+      'inc.empty': 'Wala pang naitalang insidente.',
+      'inc.more': 'Magpakita pa',
+      'st.reported': 'Iniulat', 'st.responding': 'Tumutugon', 'st.cleaned': 'Nalinis', 'st.resolved': 'Naayos',
+      'stage': 'Stage {n}',
+      'dlg.close': 'Isara',
+      'footer.privacy': 'Pampublikong pahina: walang personal na impormasyon ng mga tumutugon.',
+      'footer.refresh': 'Nagre-refresh kada {n} s.',
+      'err': 'Hindi maabot ang server. Ipinapakita ang huling natanggap na datos.',
+      'err.first': 'Hindi maabot ang server ngayon. Subukan muli mamaya.',
+      'ago.now': 'ngayon lang', 'ago.min': '{n} min ang nakalipas', 'ago.hour': '{n} oras ang nakalipas', 'ago.day': '{n} araw ang nakalipas',
+      'min': '{n} min', 'none': '-', 'node': 'Node'
+    }
+  };
+
+  /* ==== Language ==== */
+  let lang = 'en';
+  try { const s = localStorage.getItem('dm-lang'); if (s === 'en' || s === 'fil') lang = s; } catch (e) {}
+  const t = (k, v = {}) => String(I18N[lang][k] ?? I18N.en[k] ?? k).replace(/\{(\w+)\}/g, (_, n) => (v[n] ?? ''));
+  const locale = () => (lang === 'fil' ? 'fil-PH' : 'en-PH');
+
+  /* ==== Time helpers (server time avoids wrong-phone-clock errors) ==== */
+  let skew = 0;
+  const now = () => Date.now() + skew;
+  const ms = iso => new Date(iso).getTime();
+  const mins = (a, b) => Math.max(0, Math.round((b - a) / 60000));
+  const fmt = (o, v) => new Intl.DateTimeFormat(locale(), Object.assign({ timeZone: CONFIG.timeZone }, o)).format(new Date(v));
+  const fmtDT = v => fmt({ dateStyle: 'medium', timeStyle: 'short' }, v);
+  const fmtD = v => fmt({ dateStyle: 'medium' }, v);
+  const fmtT = v => fmt({ hour: '2-digit', minute: '2-digit', hour12: false }, v);
+  const fmtMD = v => fmt({ month: 'short', day: 'numeric' }, v);
+  function ago(iso) {
+    const m = mins(ms(iso), now());
+    if (m < 1) return t('ago.now');
+    if (m < 60) return t('ago.min', { n: m });
+    const h = Math.floor(m / 60);
+    if (h < 48) return t('ago.hour', { n: h });
+    return t('ago.day', { n: Math.floor(h / 24) });
+  }
+
+  /* ==== Data contract ====
+     status    { stage 0-3, level_pct, trend: rising|steady|falling, rain_state: dry|light|heavy,
+                 clog_suspected, last_seen_at, is_stale, battery_pct|null }
+     config    { node_label, stage1_pct, stage2_pct, stage3_pct }   (% of curb height; set by admins)
+     incident  { id, opened_at, responded_at|null, cleared_at|null, closed_at|null, max_stage,
+                 public_note|null, before: {url, captured_at}|null, after: {url, captured_at}|null }
+     readings  [{ t (ms), v (% of curb height) }]
+     Only staff-approved photos may appear in before/after. */
+  const RANGES = { '1h': { ms: 3600e3, n: 60 }, '6h': { ms: 6 * 3600e3, n: 72 }, '24h': { ms: 24 * 3600e3, n: 96 }, '7d': { ms: 7 * 86400e3, n: 84 } };
+  const SCENARIOS = ['normal', 'stage1', 'stage2', 'stage3', 'stale'];
+
+  const demoSource = {
+    scenario: 'stage2',
+    async load() {
+      const n = Date.now(), M = 60000, D = 86400000, sc = this.scenario;
+      const iso = x => new Date(x).toISOString();
+      const img = at => ({ url: null, captured_at: iso(at) });
+      const past = [[2, 2, 6, 38], [5, 3, 12, 71], [9, 1, 4, 22], [14, 2, 9, 55], [21, 2, 15, 64], [26, 1, 5, 30], [40, 3, 11, 90]]
+        .map(([d, stage, resp, dur], i) => {
+          const o = n - d * D;
+          return { id: 'p' + i, opened_at: iso(o), responded_at: iso(o + resp * M), cleared_at: iso(o + (dur - 6) * M), closed_at: iso(o + dur * M),
+            max_stage: stage, public_note: i % 2 === 0 ? 'Debris removed from the drain grate. (sample)' : null,
+            before: img(o), after: img(o + (dur - 5) * M) };
+        });
+      const incidents = past.slice();
+      const open = (minsAgo, stage, respMin) => {
+        const o = n - minsAgo * M;
+        incidents.unshift({ id: 'a', opened_at: iso(o), responded_at: respMin != null ? iso(o + respMin * M) : null, cleared_at: null, closed_at: null,
+          max_stage: stage, public_note: null, before: img(o), after: null });
+      };
+      if (sc === 'stage1') open(6, 1, null);
+      if (sc === 'stage2') open(18, 2, 7);
+      if (sc === 'stage3') open(11, 3, null);
+      const cur = { normal: 18, stage1: 48, stage2: 78, stage3: 108, stale: 78 }[sc];
+      const stage = { normal: 0, stage1: 1, stage2: 2, stage3: 3, stale: 2 }[sc];
+      const stale = sc === 'stale';
+      this.cur = cur; this.stale = stale;
+      return {
+        serverTime: iso(n),
+        config: { node_label: 'Node 01', stage1_pct: 33, stage2_pct: 67, stage3_pct: 100 },
+        status: { stage, level_pct: cur, trend: { normal: 'steady', stage1: 'rising', stage2: 'rising', stage3: 'rising', stale: 'steady' }[sc],
+          rain_state: sc === 'stage3' ? 'heavy' : 'dry', clog_suspected: stage > 0, last_seen_at: iso(n - (stale ? 42 : 1) * M), is_stale: stale, battery_pct: 82 },
+        incidents
+      };
+    },
+    async readings(range) {
+      const r = RANGES[range], n = Date.now(), cur = this.cur ?? 18, h0 = this.stale ? 0.7 : 0, out = [];
+      const g = (h, c, w) => Math.exp(-0.5 * ((h - c) / w) ** 2);
+      for (let i = 0; i < r.n; i++) {
+        const h = (r.ms / 3600e3) * (1 - i / (r.n - 1));
+        if (h < h0) continue;
+        const hh = h - h0;
+        out.push({ t: n - h * 3600e3, v: Math.max(0, 12 + 3 * Math.sin(hh * 0.9) + 48 * g(hh, 20, 1.5) + (cur - 12) * g(hh, 0, 0.9)) });
+      }
+      return out;
+    }
+  };
+
+  const supabaseSource = {
+    headers() { return { apikey: CONFIG.supabaseAnonKey, Authorization: 'Bearer ' + CONFIG.supabaseAnonKey }; },
+    base() { return CONFIG.supabaseUrl.replace(/\/$/, '') + '/rest/v1/'; },
+    async get(path) {
+      const res = await fetch(this.base() + path, { headers: this.headers() });
+      if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + path);
+      return { rows: await res.json(), date: res.headers.get('date') };
+    },
+    async load() {
+      const [s, c, i] = await Promise.all([
+        this.get('public_node_status?select=*&limit=1'),
+        this.get('public_config?select=*&limit=1'),
+        this.get('public_incidents?select=*&order=opened_at.desc&limit=100')
+      ]);
+      return { serverTime: s.date ? new Date(s.date).toISOString() : new Date().toISOString(), status: s.rows[0] || null, config: c.rows[0] || null, incidents: i.rows };
+    },
+    async readings(range) {
+      const since = new Date(now() - RANGES[range].ms).toISOString();
+      const q = range === '7d'
+        ? 'public_readings_7d?select=recorded_at,level_pct&order=recorded_at.asc&limit=1000'
+        : 'public_readings?select=recorded_at,level_pct&recorded_at=gte.' + encodeURIComponent(since) + '&order=recorded_at.asc&limit=1000';
+      const { rows } = await this.get(q);
+      return rows.map(r => ({ t: ms(r.recorded_at), v: Number(r.level_pct) }));
+    }
+  };
+  const source = CONFIG.mode === 'supabase' ? supabaseSource : demoSource;
+
+  /* ==== DOM helpers ==== */
+  const $ = id => document.getElementById(id);
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  function el(tag, props, ...kids) {
+    const e = document.createElement(tag);
+    if (props) for (const [k, v] of Object.entries(props)) { if (k === 'class') e.className = v; else e.setAttribute(k, v); }
+    for (const kid of kids) e.append(kid);
+    return e;
+  }
+  const svgEl = (tag, attrs, text) => {
+    const e = document.createElementNS(SVGNS, tag);
+    for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
+    if (text != null) e.textContent = text;
+    return e;
+  };
+  const STAGE_VAR = ['var(--normal)', 'var(--stage1)', 'var(--stage2)', 'var(--stage3)'];
+
+  /* ==== State ==== */
+  const state = { data: null, readings: null, range: '6h', selected: null, shown: CONFIG.rowsPerPage, failed: false, loadedAt: null };
+
+  const incStatus = x => (x.closed_at ? 'resolved' : x.cleared_at ? 'cleaned' : x.responded_at ? 'responding' : 'reported');
+  const thresholds = () => { const c = state.data && state.data.config; return c && c.stage1_pct != null ? [c.stage1_pct, c.stage2_pct, c.stage3_pct].map(Number) : null; };
+  const nodeLabel = () => (state.data && state.data.config && state.data.config.node_label) || t('node');
+  function pickIncident() {
+    const list = state.data ? state.data.incidents : [];
+    return list.find(x => x.id === state.selected) || list.find(x => !x.closed_at) || list[0] || null;
+  }
+
+  /* ==== Status card, meter, readings ==== */
+  function renderStatus() {
+    const d = state.data, st = d && d.status;
+    const stale = !st || st.is_stale;
+    const key = stale ? 'x' : String(Math.min(3, Math.max(0, st.stage)));
+    $('sevBadge').dataset.s = key;
+    $('sevName').textContent = t('sev.' + key);
+    $('sevDesc').textContent = stale ? (st ? t('sevd.x', { ago: ago(st.last_seen_at) }) : t('sevd.none')) : t('sevd.' + key);
+    $('clogLine').replaceChildren(stale ? t('clog.unknown') : st.clog_suspected ? el('b', null, t('clog.suspected')) : t('clog.none'));
+    $('rainLine').textContent = !stale && st.clog_suspected ? t('rain.' + (st.rain_state || 'dry')) : '';
+    $('trendLine').textContent = !stale && st.trend ? t('trend.label') + ' ' + t('trend.' + st.trend).toLowerCase() : '';
+    const tn = $('threshNote'); tn.hidden = !!thresholds(); tn.textContent = t('thresh.none');
+    $('rdLevel').textContent = st && st.level_pct != null ? Math.round(st.level_pct) + '% ' : t('none');
+    $('rdRain').textContent = st && st.rain_state ? t('rain.' + st.rain_state) : t('none');
+    $('rdSignal').textContent = st ? ago(st.last_seen_at) : t('none');
+    $('rdPower').textContent = st && st.battery_pct != null ? Math.round(st.battery_pct) + '%' : t('none');
+    drawMeter();
+  }
+
+  function drawMeter() {
+    const box = $('meterBox'), W = box.clientWidth, H = box.clientHeight;
+    if (W < 40 || H < 60) return;
+    const st = state.data && state.data.status, th = thresholds();
+    const svg = svgEl('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img' });
+    const top = 12, bot = H - 40, x0 = 10, w = 34;
+    const stale = !st || st.is_stale;
+    const v = st && st.level_pct != null ? Number(st.level_pct) : 0;
+    const ym = Math.max(120, th ? th[2] + 20 : 0, v + 5);
+    const yy = q => bot - (bot - top) * Math.min(q, ym) / ym;
+    if (th) [[0, th[0], 0], [th[0], th[1], 1], [th[1], th[2], 2], [th[2], ym, 3]].forEach(z => {
+      svg.append(svgEl('rect', { x: x0, y: yy(z[1]), width: w, height: yy(z[0]) - yy(z[1]), fill: STAGE_VAR[z[2]], opacity: .2 }));
+    });
+    const key = st ? Math.min(3, Math.max(0, st.stage)) : 0;
+    svg.append(svgEl('rect', { x: x0, y: yy(v), width: w, height: bot - yy(v), fill: stale ? 'var(--stale)' : STAGE_VAR[key], opacity: stale ? .5 : .95 }));
+    svg.append(svgEl('rect', { x: x0, y: top, width: w, height: bot - top, fill: 'none', stroke: 'var(--text-2)', 'stroke-width': .8 }));
+    if (th) {
+      svg.append(svgEl('line', { x1: x0 - 5, x2: x0 + w + 6, y1: yy(th[2]), y2: yy(th[2]), stroke: 'var(--text)', 'stroke-width': 2 }));
+      svg.append(svgEl('text', { x: x0 + w + 10, y: yy(th[2]) + 4, 'font-size': 11, fill: 'var(--text)' }, t('meter.curb')));
+      [[0, th[0]], [1, th[1]]].forEach(([i, p]) => {
+        svg.append(svgEl('line', { x1: x0 + w, x2: x0 + w + 6, y1: yy(p), y2: yy(p), stroke: STAGE_VAR[i + 1], 'stroke-width': 2 }));
+        svg.append(svgEl('text', { x: x0 + w + 10, y: yy(p) + 4, 'font-size': 11, fill: 'var(--text-2)' }, t('meter.stage', { n: i + 1 })));
+      });
+    }
+    svg.append(svgEl('text', { x: x0 + w / 2, y: bot + 18, 'font-size': 13, 'text-anchor': 'middle', fill: 'var(--text)', 'font-weight': 600 }, st && st.level_pct != null ? Math.round(v) + '%' : '-'));
+    if (stale && st) svg.append(svgEl('text', { x: 2, y: bot + 34, 'font-size': 11, fill: 'var(--text-2)' }, t('meter.last')));
+    svg.setAttribute('aria-label', st && st.level_pct != null ? t('read.level') + ': ' + Math.round(v) + '%' : t('read.level'));
+    box.replaceChildren(svg);
+  }
+
+  /* ==== Trend chart (hand-drawn SVG, no library) ==== */
+  function drawChart() {
+    const box = $('chartBox'), W = box.clientWidth, H = box.clientHeight;
+    if (W < 60 || H < 60) return;
+    const th = thresholds(), pts = state.readings || [], r = RANGES[state.range];
+    const L = 34, R = 8, Tp = 10, B = 22, tEnd = now(), tStart = tEnd - r.ms;
+    const maxData = pts.reduce((m, p) => Math.max(m, p.v), 0);
+    const ym = Math.ceil(Math.max(120, th ? th[2] + 20 : 0, maxData * 1.05) / 10) * 10;
+    const x = tt => L + (W - L - R) * (tt - tStart) / r.ms;
+    const y = v => Tp + (H - Tp - B) * (1 - Math.min(v, ym) / ym);
+    const svg = svgEl('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': t('trend.title') });
+    if (th) {
+      [[0, th[0], 0], [th[0], th[1], 1], [th[1], th[2], 2], [th[2], ym, 3]].forEach(z => {
+        svg.append(svgEl('rect', { x: L, y: y(z[1]), width: W - L - R, height: y(z[0]) - y(z[1]), fill: STAGE_VAR[z[2]], opacity: .14 }));
+      });
+      [[th[0], 1, t('stage', { n: 1 })], [th[1], 2, t('stage', { n: 2 })], [th[2], 3, t('meter.curb')]].forEach(([p, i, lab]) => {
+        svg.append(svgEl('line', { x1: L, x2: W - R, y1: y(p), y2: y(p), stroke: STAGE_VAR[i], 'stroke-dasharray': '4 3', 'stroke-width': 1 }));
+        svg.append(svgEl('text', { x: L + 6, y: y(p) - 4, 'font-size': 11, 'text-anchor': 'start', fill: 'var(--text-2)' }, lab + ' ' + Math.round(p) + '%'));
+      });
+    }
+    [0, 50, 100].forEach(v => { if (v <= ym) svg.append(svgEl('text', { x: L - 5, y: y(v) + 4, 'font-size': 11, 'text-anchor': 'end', fill: 'var(--text-2)' }, v)); });
+    svg.append(svgEl('line', { x1: L, x2: L, y1: Tp, y2: H - B, stroke: 'var(--text-2)', 'stroke-width': .5 }));
+    svg.append(svgEl('line', { x1: L, x2: W - R, y1: H - B, y2: H - B, stroke: 'var(--text-2)', 'stroke-width': .5 }));
+    for (let k = 0; k <= 4; k++) {
+      const tt = tStart + r.ms * k / 4;
+      svg.append(svgEl('text', { x: L + (W - L - R) * k / 4, y: H - 6, 'font-size': 11, 'text-anchor': k === 0 ? 'start' : k === 4 ? 'end' : 'middle', fill: 'var(--text-2)' },
+        state.range === '7d' ? fmtMD(tt) : fmtT(tt)));
+    }
+    const vis = pts.filter(p => p.t >= tStart - 1000);
+    if (!vis.length) {
+      svg.append(svgEl('text', { x: W / 2, y: H / 2, 'font-size': 13, 'text-anchor': 'middle', fill: 'var(--text-2)' }, t('trend.nodata')));
+    } else {
+      svg.append(svgEl('path', { d: vis.map((p, i) => (i ? 'L' : 'M') + x(p.t).toFixed(1) + ' ' + y(p.v).toFixed(1)).join(' '), fill: 'none', stroke: 'var(--text)', 'stroke-width': 1.8, 'stroke-linejoin': 'round' }));
+      const last = vis[vis.length - 1], st = state.data && state.data.status;
+      const key = st && !st.is_stale ? Math.min(3, Math.max(0, st.stage)) : null;
+      svg.append(svgEl('circle', { cx: x(last.t), cy: y(last.v), r: 4.5, fill: key == null ? 'var(--stale)' : STAGE_VAR[key], stroke: 'var(--surface)', 'stroke-width': 1.5 }));
+    }
+    box.replaceChildren(svg);
+  }
+
+  /* ==== Response + evidence for the selected incident ==== */
+  function renderResponse() {
+    const inc = pickIncident(), body = $('respBody');
+    body.replaceChildren();
+    if (!inc) { $('respTitle').textContent = t('resp.none'); return; }
+    $('respTitle').textContent = t('resp.title', { date: fmtD(inc.opened_at) });
+    const stages = [
+      { k: 's1', at: inc.opened_at, extra: '' },
+      { k: 's2', at: inc.responded_at, extra: inc.responded_at ? t('resp.after', { n: mins(ms(inc.opened_at), ms(inc.responded_at)) }) : '' },
+      { k: 's3', at: inc.cleared_at, extra: '' },
+      { k: 's4', at: inc.closed_at, extra: '' }
+    ];
+    const firstPending = stages.findIndex(s => !s.at);
+    const steps = el('div', { class: 'steps' });
+    stages.forEach((s, i) => {
+      const cls = 'step' + (s.at ? ' done' : '') + (i === firstPending ? ' now' : '');
+      steps.append(el('div', { class: cls },
+        el('div', { class: 'dot' }),
+        el('b', null, t('resp.' + s.k)),
+        el('span', null, s.at ? fmtDT(s.at) : t('resp.pending')),
+        el('span', null, s.extra)));
+    });
+    body.append(steps);
+    if (inc.closed_at) body.append(el('p', { class: 'small' }, t('resp.verified')));
+    if (inc.public_note) body.append(el('p', { class: 'small' }, t('resp.note', { note: inc.public_note })));
+  }
+
+  function frameFor(img, kind, inc) {
+    const isDemo = CONFIG.mode === 'demo';
+    let frame;
+    if (img && img.url) {
+      frame = el('div', { class: 'frame' }, el('img', { src: img.url, alt: t('ev.' + kind) + ' ' + nodeLabel() + ' ' + fmtDT(img.captured_at), loading: 'lazy' }));
+    } else if (img && isDemo) {
+      frame = el('div', { class: 'frame sample' }, t('ev.sample'));
+    } else {
+      frame = el('div', { class: 'frame' }, kind === 'after' && !inc.closed_at && !inc.cleared_at ? t('ev.pending') : t('ev.none'));
+    }
+    const cap = el('p', { class: 'cap' }, el('b', { style: 'display:block' }, t('ev.' + kind)), el('span', { style: 'display:block;min-height:1.4em' }, img ? fmtDT(img.captured_at) : ''));
+    const wrap = img ? el('button', { class: 'shot', type: 'button', 'aria-label': t('ev.' + kind) }, frame, cap) : el('div', { class: 'shot' }, frame, cap);
+    if (img) wrap.addEventListener('click', () => openDialog(img, kind, inc, frame.className.includes('sample')));
+    return wrap;
+  }
+
+  function renderEvidence() {
+    const inc = pickIncident(), box = $('shots');
+    box.replaceChildren();
+    if (!inc) { $('evSub').textContent = ''; $('evState').textContent = t('ev.noinc'); return; }
+    $('evSub').textContent = t('ev.sub', { date: fmtDT(inc.opened_at), node: nodeLabel() });
+    box.append(frameFor(inc.before, 'before', inc), frameFor(inc.after, 'after', inc));
+    const s = incStatus(inc);
+    $('evState').textContent = { resolved: t('ev.stateVerified'), cleaned: t('ev.stateCleaned'), responding: t('ev.stateResp'), reported: t('ev.stateRep') }[s];
+  }
+
+  function openDialog(img, kind, inc, isSample) {
+    $('dlgTitle').textContent = t('ev.' + kind) + ' · ' + nodeLabel();
+    $('dlgBody').replaceChildren(isSample ? el('div', { class: 'frame sample' }, t('ev.sample')) : el('img', { src: img.url, alt: t('ev.' + kind) + ' ' + nodeLabel() }));
+    $('dlgCap').textContent = fmtDT(img.captured_at) + ' · ' + nodeLabel();
+    $('dlgClose').textContent = t('dlg.close');
+    $('dlg').showModal();
+  }
+
+  function renderList() {
+    const list = state.data ? state.data.incidents : [], box = $('list'), sel = pickIncident();
+    box.replaceChildren();
+    $('empty').hidden = list.length > 0; $('empty').textContent = t('inc.empty');
+    list.slice(0, state.shown).forEach(x => {
+      const s = incStatus(x);
+      const row = el('button', { class: 'row', type: 'button' },
+        el('span', null, fmtMD(x.opened_at)),
+        el('span', null, t('stage', { n: x.max_stage })),
+        el('span', null, el('span', { class: 'badge ' + s }, t('st.' + s))),
+        el('span', { class: 'small' }, x.responded_at ? t('min', { n: mins(ms(x.opened_at), ms(x.responded_at)) }) : t('none')));
+      if (sel && sel.id === x.id) row.setAttribute('aria-current', 'true');
+      row.addEventListener('click', () => { state.selected = x.id; renderIncidentViews(); });
+      box.append(row);
+    });
+    const more = $('moreBtn'); more.hidden = list.length <= state.shown; more.textContent = t('inc.more');
+  }
+
+  function renderIncidentViews() { renderResponse(); renderEvidence(); renderList(); }
+
+  /* ==== Page chrome ==== */
+  function applyStatic() {
+    document.documentElement.lang = lang === 'fil' ? 'fil' : 'en';
+    document.querySelectorAll('[data-i18n]').forEach(n => { n.textContent = t(n.dataset.i18n); });
+    $('siteName').textContent = CONFIG.siteName;
+    $('siteLoc').textContent = CONFIG.location;
+    $('langBtn').textContent = t('lang.switch');
+    $('contact').textContent = CONFIG.contact[lang] || '';
+    $('refreshNote').textContent = t('footer.refresh', { n: CONFIG.refreshSeconds });
+    const sel = $('scenario'), cur = demoSource.scenario;
+    sel.replaceChildren();
+    SCENARIOS.forEach(s => { const o = el('option', { value: s }, t('sc.' + s)); if (s === cur) o.selected = true; sel.append(o); });
+    const rg = $('rg'); rg.replaceChildren();
+    Object.keys(RANGES).forEach(k => {
+      const b = el('button', { type: 'button', 'aria-pressed': String(k === state.range) }, t('range.' + k));
+      b.addEventListener('click', () => { state.range = k; loadReadings(); renderRangeButtons(); });
+      rg.append(b);
+    });
+  }
+  function renderRangeButtons() { [...$('rg').children].forEach((b, i) => b.setAttribute('aria-pressed', String(Object.keys(RANGES)[i] === state.range))); }
+
+  function render() {
+    const b = $('errBanner'); b.hidden = !state.failed; b.textContent = state.data ? t('err') : t('err.first');
+    if (!state.data) return;
+    renderStatus(); drawChart(); renderIncidentViews();
+  }
+
+  async function loadReadings() {
+    try { state.readings = await source.readings(state.range); } catch (e) { console.error(e); state.readings = []; }
+    drawChart();
+  }
+  async function load() {
+    try {
+      const d = await source.load();
+      skew = d.serverTime ? ms(d.serverTime) - Date.now() : 0;
+      state.data = d; state.failed = false; state.loadedAt = now();
+    } catch (e) { console.error(e); state.failed = true; }
+    render();
+    if (state.data) await loadReadings();
+  }
+
+  /* ==== Wiring ==== */
+  $('langBtn').addEventListener('click', () => {
+    lang = lang === 'en' ? 'fil' : 'en';
+    try { localStorage.setItem('dm-lang', lang); } catch (e) {}
+    applyStatic(); render();
+  });
+  $('moreBtn').addEventListener('click', () => { state.shown += CONFIG.rowsPerPage; renderList(); });
+  $('scenario').addEventListener('change', e => { demoSource.scenario = e.target.value; state.selected = null; load(); });
+  $('dlgClose').addEventListener('click', () => $('dlg').close());
+  $('dlg').addEventListener('click', e => { if (e.target === $('dlg')) $('dlg').close(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+  if (window.ResizeObserver) { new ResizeObserver(() => drawChart()).observe($('chartBox')); new ResizeObserver(() => drawMeter()).observe($('meterBox')); }
+
+  const demo = CONFIG.mode === 'demo';
+  $('sampleTag').hidden = !demo; $('scLabel').hidden = !demo;
+  applyStatic();
+  load();
+  setInterval(load, CONFIG.refreshSeconds * 1000);
+  setInterval(() => { if (state.data) renderStatus(); }, 30000);
+})();
+</script>
+</body>
+</html>
